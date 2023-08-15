@@ -1,0 +1,60 @@
+
+%% Step 0: Build PCA input struct (dimensions: channels X timepoints X trials)
+
+%below curr_var is just a loaded eeg_w{1,1} for testing
+
+
+
+%% Step 1: Perform  Temporal PCA
+
+temp_t_30 = ep_doPCA('temp','Promax',3,'SVD','COV',30,nanmean(curr_var,3),'C','Y');
+%temp_s_35 = ep_doPCA('spat','Promax',3,'SVD','COV',35,nanmean(curr_var,3),'C','Y');
+
+
+%% Step 2: Reconstruct the Temporal PCA 
+% .FacPat is standardized, need to unstandardize by multiplying by the std
+% of raw data
+
+FacPat_microVolts = temp_t_30.FacPat'.*std(curr_var_m);
+temporal_recon = temp_t_30.FacScr*FacPat_microVolts;
+
+%Step 2.1 Visualize Reconstructed Waveforms and Topoplots
+
+%% Step 3: Run Spatial PCA on reconstructed Temporal PCA
+
+temp_spatial = ep_doPCA('spat','Promax',3,'SVD','COV',17,temporal_recon,'C','Y');
+%Step 3.1 Visualize Reconstructed Waveforms and Topoplots
+FacPat_microVolts_spat = temp_spatial.FacPat'.*std(temporal_recon');
+spat_temporal_recon = temp_spatial.FacScr*FacPat_microVolts_spat;
+
+
+
+%% plots - anyone else looking at script ignore below for now (: - proof of concept that we need to unstandardize the FacPat variable and that a greater number of factors (within reason) will pro
+%duce a closer reconstruction to the original waveform
+
+%compute vars
+
+
+figure()
+subplot(2,1,1)
+plot(ten_diff,'DisplayName','2 Factors','Color','#41FB05'); hold on; plot(ten_diff_nostd,'DisplayName','2 Factors No Std Corr','color','#0B5827');
+hold on
+plot(diff_35,'DisplayName','35 Factors','Color','#DA92E8');hold on ; plot(diff_35_nostd,'DisplayName','35 Factors No std corr','color','#8B04A5')
+legend
+ylabel('Raw - Reconstructed Data')
+title('E1 Reconstruction Performance - Temporal PCA')
+set(gca,'XTickLabel','')
+xlabel('ERP Time Course')
+
+subplot(2,1,2)
+plot(curr_var_m(1,:),'DisplayName','RawData')
+hold on
+plot(recon_t_pat_35(1,:),'DisplayName','Unstandardized Reconstructed Data','Color','#DA92E8')
+hold on
+plot(recon_t_pat_35_nostd(1,:),'DisplayName','Standardized Reconstructed Data','Color','#8B04A5')
+xlabel('ERP Time Course')
+title('E1 Waveforms 35 Fac Recon')
+legend
+
+
+

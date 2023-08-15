@@ -1,0 +1,78 @@
+function calculate_erp_peak_distances( batch )
+%% calculate_erp_differences: get peak-to-peak distances between erps
+% Inputs:
+%  - batch - struct, contains batch info created by batch_erp_load_params.m
+% Saves output to data file in batch.batch_fname
+
+%% get information for processing
+% pre-set maps of neighboring peaks
+erp_neighbors_tact = containers.Map( {'P50','N80','P100','N140','P4','P190'},...
+                                     {'N80','P100','N140','P300','N140','N300'} );
+% erps_neighbors_aud = containers.Map( {'P1','P50','Na'}, {'N2','Na','Tb'} );
+erps_neighbors_aud = containers.Map( {'P100','P1' ,'N2' ,'N1c','P1T','Na','P50','N100' },  ...
+                                     {'N250','N2' ,'P2' ,'P2' ,'Na', 'P2','N100','P2_ldaep' }   ...
+                                   );
+erps_neighbors_aurora = containers.Map({'N13','N20','P50','N80','P100','N140','P300'}, ...
+                                         {'P25','P20','N80','P100','N140','P300','P4'} ...
+                                         );
+% use tactile or auditory map based on task
+switch batch.task(1)
+    case 't', erp_map = erp_neighbors_tact;
+    case 'A', erp_map = erps_neighbors_aurora;
+    otherwise, erp_map = erps_neighbors_aud;
+end
+
+% get information from batch
+method_parts = split(batch.method,'_');
+batch.method = method_parts{1};
+data_path = fullfile(batch.path_task_erp,batch.batch_fname);
+methods   = {'peak','avg','auc','peak_norm','avg_norm'};
+load( data_path, 'data' )
+
+%% iterate through data and calculate peak differences
+% iterate through ROIs
+rois = fieldnames(data);
+n_rois = length(rois);
+for i_r = 1:n_rois
+    roi = rois{i_r,1};
+    % iterate through ERP components
+    erps = fieldnames(data.(roi));
+    for i_e = 1:size(erps,1)
+        erp = erps{i_e,1};
+        % select only first components--skip if last component in data
+        try erp_map(erp); catch, continue; end
+        erp_data = data.(roi).(erp);
+        
+        for i_m = 1:length(methods)
+            method = [batch.method '_' methods{i_m}];
+            % get fields with tag matching erp calculation method
+            fields = get_struct_fields_with_tag(erp_data,method);
+            % iterate through fields
+            for i_f = 1:length(fields)
+                field  = fields{i_f,1};
+                s_id = field(2:5);
+                
+                % load erps and subtract
+                erp1 = data.(roi).(erp).(field);
+                if ~isfield(data.(roi),erp_map(erp)), continue; end
+            if ~ isfield(data.(roi).(erp_map(erp)),field) , continue;end
+                erp2 = data.(roi).(erp_map(erp)).(field);
+                if sum(isnan(erp1)) == length(erp1) || sum(isnan(erp2)) == length(erp2); continue; end
+               try
+                peak_peak_dist = (erp1 - erp2);
+               catch
+                   a=5
+               end
+                % save to file
+                diff_name = [erp '_' erp_map(erp) '_dist'];
+                subj_name = ['p' s_id '_' method];
+                data.(roi).(diff_name).(subj_name) = peak_peak_dist;
+            end
+        end
+    end
+end
+
+% save output file
+save(data_path,'data','batch')
+
+end

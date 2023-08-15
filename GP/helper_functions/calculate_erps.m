@@ -1,0 +1,133 @@
+function erps = calculate_erps( eeg, subject, batch, i_r, i_l ,file_proc_info)
+%% CALCULATE_ERPS: calculate and save erp components for given eeg & params
+% Inputs:
+%  - eeg - beapp-type cell with segmented eeg across conditions
+%  - subject    - char with 4-digit subject id
+%  - batch_info - struct w/ processing info from load_batch_erp_variables.m
+%  - i_r        - index of roi to use from batch_info
+%  - i_l        - index of erp component to use from batch_info
+
+%% get information about batch
+% get channel information
+chan_1020   = batch.roi_1020{1,i_r};
+chan_other  = batch.roi_other{1,i_r};
+chan_weight = batch.roi_weight{1,i_r};
+chan_str    = get_chan_str(chan_1020,chan_other);
+roi = {chan_1020,chan_other,chan_weight};
+use_abs = batch.use_abs;
+
+% get temporal information
+seg_win   = batch.seg_win;
+srate     = batch.srate;
+peak_time = batch.peak_time{1,i_r}(i_l);
+try
+win_size  = batch.peak_win_size{1,i_r}(i_l);
+catch
+    a=5;
+end
+
+% get information about peak type and file saving
+peak_name = batch.peak_name{1,i_r}{1,i_l};
+data_path = batch.path_task_erp;
+data_fn   = batch.batch_fname;
+polarity  = batch.peak_polarity{i_r}(i_l);
+if ~strcmp(peak_name,'AutoP') && ~strcmp(peak_name,'AutoN')
+t_range   = [peak_time-win_size peak_time+win_size];
+multi = 0;
+else
+    t_range = [];
+    multi = 1;
+end
+%% calculate averages/peaks
+switch batch.method
+    case 'conds'
+        if ~strcmp(peak_name,'AutoP') && ~strcmp(peak_name,'AutoN')
+        erps_avg = calculate_erp_avg_by_cond( eeg, roi, t_range, seg_win,...
+                                           srate, use_abs );
+        erps_auc = calculate_erp_auc_by_cond( eeg, roi, t_range, seg_win,...
+                                           srate );
+        [erps_peak,lat] = calculate_erp_peak_by_cond( eeg, roi, t_range,...
+                                                seg_win, srate, polarity );
+        end
+        [erps_picked_peak,picked_lat] = calculate_erp_peak_with_peak_picker_by_cond( eeg,roi,t_range, ...
+                                                   seg_win,srate,polarity,multi);
+    case 'trials'
+        %ath adjust to only keep trials where all tones were accepted
+%         if strcmp(batch.task,'ath')
+%             tones_kept = [];
+%             for i_c = 1:size(eeg,1)
+%                 curr_tone_targ = find(file_proc_info.(['targ_cond_logical',num2str(i_c)]));
+%                 try
+%                 tones_kept = [tones_kept, file_proc_info.(['segs_to_keep',num2str(i_c)])(curr_tone_targ)'];
+%                 catch
+%                     return
+%                 end
+%             end
+%             trials_to_keep = find(sum(tones_kept,2)==size(eeg,1));
+%             tones_kept(trials_to_keep,:)=2; 
+%             %if length(find(nonzeros(tones_kept(:,1))==2))<9
+%             %    return
+%            % end
+%             for tone = 1:size(tones_kept,2)
+%                 eeg{tone,1} = eeg{tone,1}(:,:,find(nonzeros(tones_kept(:,tone))==2));
+%             end
+%         end
+                if ~strcmp(peak_name,'AutoP') && ~strcmp(peak_name,'AutoN')
+        erps_auc = calculate_erp_auc_by_trial(eeg, roi, t_range,        ...
+                                           seg_win, srate, use_abs );
+        erps_avg = calculate_erp_avg_by_trial( eeg, roi, t_range, seg_win,...
+                                           srate, use_abs );
+        [erps_peak,lat] = calculate_erp_peak_by_trial( eeg, roi, t_range,...
+                                                seg_win, srate, polarity );
+                end
+                erps_picked_peak = []; picked_lat = [];
+%        [erps_picked_peak,picked_lat] = calculate_erp_peak_with_peak_picker_by_trial( eeg, roi, t_range,...
+                                           %     seg_win, srate, polarity,multi );
+end
+
+%% save data
+% save erp peak/average data
+if ~strcmp(peak_name,'AutoP') && ~strcmp(peak_name,'AutoN')
+save_stats( data_path, data_fn, subject, chan_str, erps_avg, peak_name, ...
+            [batch.method '_avg'] );
+save_stats( data_path, data_fn, subject, chan_str, erps_auc, peak_name, ...
+            [batch.method '_auc'] );
+save_stats( data_path, data_fn, subject, chan_str, erps_peak, peak_name,...
+            [batch.method '_peak'] );
+save_stats( data_path, data_fn, subject, chan_str, lat,         ...
+                peak_name, [batch.method '_latency'] );
+end
+save_stats( data_path, data_fn, subject, chan_str, erps_picked_peak, peak_name,...
+            [batch.method '_picked_peak'] );
+save_stats( data_path, data_fn, subject, chan_str, picked_lat,         ...
+                peak_name, [batch.method '_picked_latency'] );
+%% calculate rescaled averages/peaks
+ for i_c = 1:length(eeg)
+     eeg{i_c} = normalize(eeg{i_c},'medianiqr');
+ end
+switch batch.method
+    case 'conds'
+        erps_avg = calculate_erp_avg_by_cond( eeg, roi, t_range, seg_win,...
+                                           srate, use_abs );
+        erps_auc = calculate_erp_auc_by_cond( eeg, roi, t_range, seg_win,...
+                                           srate );
+        [erps_peak,lat] = calculate_erp_peak_by_cond( eeg, roi, t_range,...
+                                                seg_win, srate, polarity );
+
+    case 'trials'
+        erps_avg = calculate_erp_avg_by_trial( eeg, roi, t_range, seg_win,...
+                                           srate, use_abs );
+end
+
+%% save rescaled data
+% save erp peak/average data
+save_stats( data_path, data_fn, subject, chan_str, erps_avg, peak_name, ...
+            [batch.method '_avg_norm'] );
+save_stats( data_path, data_fn, subject, chan_str, erps_auc, peak_name, ...
+            [batch.method '_auc_norm'] );
+save_stats( data_path, data_fn, subject, chan_str, erps_peak, peak_name,...
+            [batch.method '_peak_norm'] );
+save_stats( data_path, data_fn, subject, chan_str, lat,         ...
+                peak_name, [batch.method '_lat_norm'] );
+
+end
